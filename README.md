@@ -1,61 +1,21 @@
 # NiteVelour (Cloudflare Pages Direct Upload)
 
-This project is designed for **Wrangler Direct Upload** (no GitHub integration).
+This project is designed for **Wrangler Direct Upload**. You build `dist/` locally, then deploy with Wrangler.
+
+## Critical requirement (why cards sometimes “don’t load”)
+
+Your live grid uses **Pages Functions**:
+- `/api/live`
+- `/api/performer`
+
+When you deploy, you must deploy from a folder that contains **both**:
+- `dist/` (static output)
+- `functions/` (Pages Functions)
+
+If you run `wrangler pages deploy dist` from a different folder that only has `dist/`, your site becomes static-only and `/api/live` will 404.
 
 ## Quick start
 
 ### 1) Install dependencies (once)
 ```powershell
 npm install
-```
-
-### 2) Configure CrakRevenue Cam Models API (optional but recommended)
-Create a `.env` file in the project root (do **not** deploy this file):
-
-```env
-CRAK_API_KEY="YOUR_X_API_KEY"
-CRAK_TOKEN="YOUR_TOKEN"
-CRAK_UA="nitevelour.com"
-```
-
-Then run:
-```powershell
-npm run sync:cams
-```
-
-This writes `data/performers.json`.
-
-If you prefer not to use `.env`, you can set PowerShell env vars instead:
-```powershell
-$env:CRAK_API_KEY="..."
-$env:CRAK_TOKEN="..."
-$env:CRAK_UA="nitevelour.com"
-npm run sync:cams
-```
-
-### 3) Build
-```powershell
-npm run build
-```
-
-### 4) Deploy
-```powershell
-npx wrangler pages deploy dist --project-name nitevelour
-```
-
-or:
-```powershell
-npm run deploy
-```
-
-## Smartlink redirect endpoints
-
-- `/go/cams` -> CrakRevenue cam smartlink
-- `/go/dating` -> Jerkmate dating smartlink
-
-Edit `functions/go/[offer].ts` to change destinations.
-
-## Notes
-
-- Model/list pages are generated only if `data/performers.json` exists.
-- Brand filter defaults live in `site.config.json` under `crak.brands` (e.g., `chaturbate, stripchat, awempire, streamate`).

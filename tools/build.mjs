@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * NiteVelour static build:
  * - Builds homepage, live directory, category hubs, guides, and legal pages
@@ -119,7 +119,7 @@ function footerHTML(cfg, buildStamp) {
       <span style="opacity:.55">•</span>
       <span>No browser cryptominers / “web miners”.</span>
       <span style="opacity:.55">•</span>
-      <span>Pages ship with first‑party scripts for site functionality; outbound links/embeds are third‑party.</span>
+      <span>Pages ship with first-party scripts for site functionality; outbound links/embeds are third-party.</span>
     </div>
 
     <div style="margin-top:10px;opacity:.6">Build: ${esc(buildStamp)}</div>
@@ -303,7 +303,7 @@ function liveGridJS({ defaultBrands = "", defaultGender = "", defaultTopic = "",
     const live = p.live ? "Live now" : "Offline";
     return \`
       <div class="card2 tile">
-        \${thumb ? \`<a href="\${prof}"><img class="thumb" src="\${thumb}" alt="\${name}"/></a>\` : ""}
+        \${thumb ? \`<a href="\${prof}"><img class="thumb" src="\${thumb}" alt="\${name}" loading="lazy" decoding="async"/></a>\` : ""}
         <div style="margin-top:10px">
           <div class="title">\${name}</div>
           <div class="mini">\${b} • \${live}</div>
@@ -315,10 +315,32 @@ function liveGridJS({ defaultBrands = "", defaultGender = "", defaultTopic = "",
       </div>\`;
   }
 
+  function extractList(data){
+    if(!data) return [];
+    if(Array.isArray(data.performers)) return data.performers;
+    if(Array.isArray(data.models)) return data.models;
+    if(Array.isArray(data.live)) return data.live;
+    if(Array.isArray(data.items)) return data.items;
+    return [];
+  }
+
+  async function safeFetchJson(url){
+    try{
+      const res = await fetch(url, { headers: { "accept":"application/json" }, cache: "no-store" });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }catch(err){
+      console.warn("[live-grid] /api/live failed:", err);
+      return null;
+    }
+  }
+
   async function load(reset){
     if(!grid) return;
     if(reset){ state.page = 1; grid.innerHTML = ""; }
     if(status) status.textContent = "Loading…";
+    if(moreBtn) moreBtn.disabled = true;
+
     const u = new URL("/api/live", location.origin);
     u.searchParams.set("page", String(state.page));
     u.searchParams.set("size", String(state.size));
@@ -327,14 +349,21 @@ function liveGridJS({ defaultBrands = "", defaultGender = "", defaultTopic = "",
     if(state.gender) u.searchParams.set("gender", state.gender);
     if(state.brands) u.searchParams.set("brands", state.brands);
     if(state.topic) u.searchParams.set("topic", state.topic);
+    u.searchParams.set("_t", String(Date.now())); // avoid edge caching weirdness on broken responses
 
-    const res = await fetch(u.toString(), { headers: { "accept":"application/json" } });
-    const data = await res.json().catch(()=>null);
+    const data = await safeFetchJson(u.toString());
+    const list = extractList(data);
 
-    const list = data && Array.isArray(data.performers) ? data.performers : [];
     for(const p of list){ grid.insertAdjacentHTML("beforeend", card(p)); }
-    if(status) status.textContent = list.length ? "" : "No performers found (try another filter).";
+
+    if(!data){
+      if(status) status.textContent = "Live feed unavailable (try again in a moment).";
+    } else if(status) {
+      status.textContent = list.length ? "" : "No performers found (try another filter).";
+    }
+
     state.page += 1;
+    if(moreBtn) moreBtn.disabled = false;
   }
 
   if(moreBtn){ moreBtn.addEventListener("click", ()=>load(false)); }
@@ -458,7 +487,7 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
   const iframe = document.getElementById("nvIframe");
   const iframeLink = document.getElementById("nvIframeLink");
 
-  const escHtml = (s) => String(s||"").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;" }[c]));
+  const escHtml = (s) => String(s||"").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   const isLive = (v) => {
     if (v === true || v === 1 || v === "1") return true;
     const s = String(v||"").toLowerCase();
@@ -485,8 +514,13 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
   }
 
   async function fetchJSON(u){
-    const res = await fetch(u, { headers: { "accept":"application/json" }, cache: "no-store" });
-    return res.json().catch(() => null);
+    try{
+      const res = await fetch(u, { headers: { "accept":"application/json" }, cache: "no-store" });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }catch(e){
+      return null;
+    }
   }
 
   function renderAlt(list){
@@ -508,7 +542,7 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
         const watch = p.roomUrl || "/go/cams?pos=model_alt";
         altGrid.insertAdjacentHTML("beforeend",
           '<div class="card2 tile">' +
-            (thumb ? ('<a href="' + href + '"><img class="thumb" src="' + escHtml(thumb) + '" alt="' + escHtml(nm) + '"/></a>') : '') +
+            (thumb ? ('<a href="' + href + '"><img class="thumb" src="' + escHtml(thumb) + '" alt="' + escHtml(nm) + '" loading="lazy" decoding="async"/></a>') : '') +
             '<div class="title" style="margin-top:10px">' + escHtml(nm) + '</div>' +
             '<div class="mini">' + escHtml(b.toUpperCase()) + '</div>' +
             '<div class="actions"><a class="secondary" href="' + href + '">Profile</a>' +
@@ -516,6 +550,15 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
           '</div>');
       }catch(e){}
     });
+  }
+
+  function extractList(data){
+    if(!data) return [];
+    if(Array.isArray(data.performers)) return data.performers;
+    if(Array.isArray(data.models)) return data.models;
+    if(Array.isArray(data.live)) return data.live;
+    if(Array.isArray(data.items)) return data.items;
+    return [];
   }
 
   async function loadAlternatives(){
@@ -534,20 +577,20 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
     u.searchParams.set("_t", String(Date.now()));
 
     let data = await fetchJSON(u.toString());
-    let list = (data && data.ok && Array.isArray(data.performers)) ? data.performers : [];
+    let list = extractList(data);
 
     // If too narrow, retry without topic then without gender
     if(!list.length && topic){
       u.searchParams.delete("topic");
       u.searchParams.set("_t", String(Date.now()));
       data = await fetchJSON(u.toString());
-      list = (data && data.ok && Array.isArray(data.performers)) ? data.performers : [];
+      list = extractList(data);
     }
     if(!list.length && gender){
       u.searchParams.delete("gender");
       u.searchParams.set("_t", String(Date.now()));
       data = await fetchJSON(u.toString());
-      list = (data && data.ok && Array.isArray(data.performers)) ? data.performers : [];
+      list = extractList(data);
     }
 
     renderAlt(list);
@@ -563,7 +606,7 @@ function profileRefreshJS({ brand = "", name = "", gender = "", topic = "" }) {
     u.searchParams.set("_t", String(Date.now()));
 
     const data = await fetchJSON(u.toString());
-    const p = (data && data.ok && data.performer) ? data.performer : null;
+    const p = (data && (data.performer || data.data?.performer || data)) ? (data.performer || data.data?.performer || data) : null;
 
     if(!p){
       setLine("Offline");
@@ -608,18 +651,18 @@ function legalPages(cfg, buildStamp) {
     <ul>
       <li><b>Basic server logs</b> (IP address, user agent, requested URL, timestamp) for security and abuse prevention.</li>
       <li><b>Cookies / local storage</b> for the 18+ age gate and basic UX preferences (if enabled).</li>
-      <li><b>Third‑party data</b> from ad networks and affiliate partners (they may set cookies and use tracking parameters).</li>
+      <li><b>Third-party data</b> from ad networks and affiliate partners (they may set cookies and use tracking parameters).</li>
     </ul>
 
     <h2>Ads and affiliate links</h2>
     <p>
-      We monetize via advertisements and affiliate links. When you click through to third‑party sites, those third parties may
-      place cookies or collect data per their own policies. We do not control third‑party tracking.
+      We monetize via advertisements and affiliate links. When you click through to third-party sites, those third parties may
+      place cookies or collect data per their own policies. We do not control third-party tracking.
     </p>
 
     <h2>Analytics</h2>
     <p>
-      We may use privacy‑respecting analytics to understand which pages perform well. If enabled, analytics tools may collect
+      We may use privacy-respecting analytics to understand which pages perform well. If enabled, analytics tools may collect
       aggregated usage data (e.g., page views, referrers, device type).
     </p>
 
@@ -648,13 +691,13 @@ function legalPages(cfg, buildStamp) {
 
     <h2>What this site is</h2>
     <p>
-      ${esc(cfg.siteName || "NiteVelour")} is a directory and guide site that links to third‑party adult services and displays
+      ${esc(cfg.siteName || "NiteVelour")} is a directory and guide site that links to third-party adult services and displays
       partner-provided previews/embeds. We do not host videos.
     </p>
 
     <h2>External links</h2>
     <p>
-      Clicking through sends you to third‑party sites. Their terms and policies apply. We are not responsible for third‑party content,
+      Clicking through sends you to third-party sites. Their terms and policies apply. We are not responsible for third-party content,
       availability, pricing, or conduct.
     </p>
 
@@ -684,7 +727,7 @@ function legalPages(cfg, buildStamp) {
 
   <section class="card" style="margin-top:14px">
     <p>
-      ${esc(cfg.siteName || "NiteVelour")} is a directory that displays partner-provided previews and links to third‑party sites.
+      ${esc(cfg.siteName || "NiteVelour")} is a directory that displays partner-provided previews and links to third-party sites.
       If you believe material accessible through our site infringes your copyright, you may submit a takedown notice.
     </p>
 
@@ -721,10 +764,10 @@ function legalPages(cfg, buildStamp) {
   <section class="card" style="margin-top:14px">
     <p>
       ${esc(cfg.siteName || "NiteVelour")} is not a producer (primary or secondary) of any content found on this site.
-      We do not create, produce, host, or upload adult performances. We provide links and partner-provided previews to third‑party services.
+      We do not create, produce, host, or upload adult performances. We provide links and partner-provided previews to third-party services.
     </p>
     <p>
-      Records required under 18 U.S.C. § 2257 and related regulations are maintained by the respective third‑party content providers.
+      Records required under 18 U.S.C. § 2257 and related regulations are maintained by the respective third-party content providers.
     </p>
     <p>
       If you have questions regarding compliance, contact us at <a href="mailto:${esc(generalEmail)}">${esc(generalEmail)}</a>.
@@ -741,11 +784,11 @@ function legalPages(cfg, buildStamp) {
 
   <section class="card" style="margin-top:14px">
     <p>
-      ${esc(cfg.siteName || "NiteVelour")} may earn commissions when you click affiliate links or sign up / purchase on third‑party sites.
+      ${esc(cfg.siteName || "NiteVelour")} may earn commissions when you click affiliate links or sign up / purchase on third-party sites.
       We may also display advertisements that compensate us based on impressions and/or clicks.
     </p>
     <p>
-      Prices, availability, and terms are controlled by third‑party partners and may change at any time.
+      Prices, availability, and terms are controlled by third-party partners and may change at any time.
     </p>
   </section>
 </main>`;
@@ -868,7 +911,7 @@ function guideTags(slug, intent, title) {
   if (i === "platform") tags.add("platform");
 
   // platform-ish slugs
-  if (/(stripchat|chaturbate|awempire|streamate|livejasmin|jerkmate)/.test(s) || s.includes("platform")) {
+  if (/(stripchat|chaturbate|awempire|streamate|livejasmin|jerkmate)\b/.test(s) || s.includes("platform")) {
     tags.add("platform");
   }
 
@@ -1032,7 +1075,7 @@ function guideContent(slug, cfg, guide) {
       </ul>
       <h2>Starter checklist</h2>
       <ul>
-        <li>Use a modern browser, block third‑party popups, and avoid sharing personal info.</li>
+        <li>Use a modern browser, block third-party popups, and avoid sharing personal info.</li>
         <li>Start with categories/tags, not with random scrolling.</li>
         <li>Bookmark a few favorites so you can return quickly.</li>
       </ul>
@@ -1044,7 +1087,7 @@ function guideContent(slug, cfg, guide) {
     `,
     "how-to-find-a-model": `
       <p>Stop scrolling and use a repeatable workflow. This is the fastest loop for finding good rooms that match your preferences.</p>
-      <h2>The 60‑second workflow</h2>
+      <h2>The 60-second workflow</h2>
       <ol>
         <li>Choose 1–2 platforms and a gender filter.</li>
         <li>Scan thumbnails for live status and stream quality.</li>
@@ -1370,7 +1413,7 @@ function guideContent(slug, cfg, guide) {
   // Generic info/tips/safety guide template (no placeholders)
   const label = (tags.includes("safety") ? "Safety checklist" : (tags.includes("tips") ? "Tips" : "Guide"));
   return wrap(`
-    <p><b>${esc(title)}</b> is a ${esc(label.toLowerCase())} page designed to be useful first and conversion‑friendly second.</p>
+    <p><b>${esc(title)}</b> is a ${esc(label.toLowerCase())} page designed to be useful first and conversion-friendly second.</p>
 
     <h2>Key takeaways</h2>
     <ul>
@@ -1898,19 +1941,19 @@ function buildModelPages(cfg, buildStamp) {
       <section class="card" style="margin-top:14px">
         <h2>More like this</h2>
         <div class="grid cols4" style="margin-top:10px">
-          ${related.map(r=>{
-            const rb = brandKeyFrom(r);
-            const rid = safeId(r.itemId || "");
-            const rname = r.nameClean || r.name || "Profile";
-            const rthumb = r.thumbnailUrl || "";
-            const href = `/m/${encodeURIComponent(rb)}/${encodeURIComponent(rid)}/`;
-            return `<div class="card2 tile">
-              ${rthumb ? `<a href="${href}"><img class="thumb" src="${esc(rthumb)}" alt="${esc(rname)}"/></a>` : ""}
+                    ${related.map(r => {
+                        const rb = brandKeyFrom(r);
+                        const rid = safeId(r.itemId || "");
+                        const rname = r.nameClean || r.name || "Profile";
+                        const rthumb = r.thumbnailUrl || "";
+                        const href = `/m/${encodeURIComponent(rb)}/${encodeURIComponent(rid)}/`;
+                        return `<div class="card2 tile">
+              ${rthumb ? `<a href="${href}"><img class="thumb" src="${esc(rthumb)}" alt="${esc(rname)}" loading="lazy" decoding="async"/></a>` : ""}
               <div style="margin-top:10px" class="title">${esc(rname)}</div>
               <div class="mini">${esc(brandLabel(rb))}</div>
               <div class="actions"><a class="secondary" href="${href}">Open</a></div>
             </div>`;
-          }).join("")}
+                    }).join("")}
         </div>
       </section>` : "";
 
@@ -1918,7 +1961,7 @@ function buildModelPages(cfg, buildStamp) {
 <main class="wrap">
   <section class="card">
     <div class="row" style="align-items:flex-start">
-      ${thumb ? `<img src="${esc(thumb)}" alt="${esc(name)}" style="width:110px;height:110px;border-radius:14px;object-fit:cover;background:#000">` : ""}
+      ${thumb ? `<img src="${esc(thumb)}" alt="${esc(name)}" loading="lazy" decoding="async" style="width:110px;height:110px;border-radius:14px;object-fit:cover;background:#000">` : ""}
       <div style="flex:1;min-width:240px">
         <h1 style="margin:0 0 8px 0">${esc(name)}</h1>
         <div id="nvLiveLine" class="muted">${esc(bLabel)} • ${p.live ? "Live now" : "Offline"}</div>
@@ -2014,7 +2057,7 @@ function buildModelPages(cfg, buildStamp) {
         const thumb = p.thumbnailUrl || "";
         const href = `/m/${encodeURIComponent(b)}/${encodeURIComponent(id)}/`;
         return `<div class="card2 tile">
-          ${thumb ? `<a href="${href}"><img class="thumb" src="${esc(thumb)}" alt="${esc(name)}"/></a>` : ""}
+          ${thumb ? `<a href="${href}"><img class="thumb" src="${esc(thumb)}" alt="${esc(name)}" loading="lazy" decoding="async"/></a>` : ""}
           <div style="margin-top:10px" class="title">${esc(name)}</div>
           <div class="actions">
             <a class="secondary" href="${href}">Profile</a>
